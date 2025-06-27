@@ -1,5 +1,17 @@
 # gradio_client
 
+## 1.10.4
+
+### Fixes
+
+- [#11041](https://github.com/gradio-app/gradio/pull/11041) [`474aa30`](https://github.com/gradio-app/gradio/commit/474aa30979c14793e00852ad2f4ef6c12a41b900) - Attach cookies to client after first request (to support multiple-replica setups with cookie-based affinity).  Thanks @abidlabs!
+
+## 1.10.3
+
+### Fixes
+
+- [#11347](https://github.com/gradio-app/gradio/pull/11347) [`fdce3a0`](https://github.com/gradio-app/gradio/commit/fdce3a094fe1278ae83fe2f8b134b4c268506cfe) - Fix `gr.api()` to support more types, including optional params.  Thanks @abidlabs!
+
 ## 1.10.2
 
 ### Fixes

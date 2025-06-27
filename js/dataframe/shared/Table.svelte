@@ -1,7 +1,8 @@
 <script lang="ts" context="module">
 	import {
 		create_dataframe_context,
-		type SortDirection
+		type SortDirection,
+		type FilterDatatype
 	} from "./context/dataframe_context";
 </script>
 
@@ -43,6 +44,7 @@
 		type DragHandlers
 	} from "./utils/drag_utils";
 	import { sort_data_and_preserve_selection } from "./utils/sort_utils";
+	import { filter_data_and_preserve_selection } from "./utils/filter_utils";
 
 	export let datatype: Datatype | Datatype[];
 	export let label: string | null = null;
@@ -120,7 +122,7 @@
 		const observer = new IntersectionObserver((entries) => {
 			entries.forEach((entry) => {
 				if (entry.isIntersecting && !is_visible) {
-					set_cell_widths();
+					width_calculated = false;
 				}
 				is_visible = entry.isIntersecting;
 			});
@@ -129,10 +131,18 @@
 		document.addEventListener("click", handle_click_outside);
 		window.addEventListener("resize", handle_resize);
 
+		const global_mouse_up = (event: MouseEvent): void => {
+			if (is_dragging || drag_start) {
+				handle_mouse_up(event);
+			}
+		};
+		document.addEventListener("mouseup", global_mouse_up);
+
 		return () => {
 			observer.disconnect();
 			document.removeEventListener("click", handle_click_outside);
 			window.removeEventListener("resize", handle_resize);
+			document.removeEventListener("mouseup", global_mouse_up);
 		};
 	});
 
@@ -223,6 +233,7 @@
 				}
 				last_width_data_length = 0;
 				last_width_column_count = 0;
+				width_calculated = false;
 			}
 		}
 
@@ -252,12 +263,18 @@
 			df_actions.reset_sort_state();
 		}
 
+		if ($df_state.filter_state.filter_columns.length > 0) {
+			filter_data(data, display_value, styling);
+		} else {
+			df_actions.reset_filter_state();
+		}
+
 		if ($df_state.current_search_query) {
 			df_actions.handle_search(null);
 		}
 
-		if (parent && cells.length > 0) {
-			set_cell_widths();
+		if (parent && cells.length > 0 && (is_reset || is_different_structure)) {
+			width_calculated = false;
 		}
 	}
 
@@ -331,11 +348,33 @@
 
 	function clear_sort(): void {
 		df_actions.reset_sort_state();
+		sort_data(data, display_value, styling);
 	}
 
-	$: if ($df_state.sort_state.sort_columns.length > 0) {
-		sort_data(data, display_value, styling);
-		df_actions.update_row_order(data);
+	$: {
+		if ($df_state.filter_state.filter_columns.length > 0) {
+			filter_data(data, display_value, styling);
+		}
+
+		if ($df_state.sort_state.sort_columns.length > 0) {
+			sort_data(data, display_value, styling);
+			df_actions.update_row_order(data);
+		}
+	}
+
+	function handle_filter(
+		col: number,
+		datatype: FilterDatatype,
+		filter: string,
+		value: string
+	): void {
+		df_actions.handle_filter(col, datatype, filter, value);
+		filter_data(data, display_value, styling);
+	}
+
+	function clear_filter(): void {
+		df_actions.reset_filter_state();
+		filter_data(data, display_value, styling);
 	}
 
 	async function edit_header(i: number, _select = false): Promise<void> {
@@ -421,9 +460,17 @@
 
 	$: max = get_max(data);
 
-	// Modify how we trigger cell width calculations
-	// Only recalculate when cells actually change, not during sort
-	$: cells[0] && cells[0]?.clientWidth && set_cell_widths();
+	let width_calc_timeout: ReturnType<typeof setTimeout>;
+	$: if (cells[0] && cells[0]?.clientWidth) {
+		clearTimeout(width_calc_timeout);
+		width_calc_timeout = setTimeout(() => set_cell_widths(), 100);
+	}
+
+	let width_calculated = false;
+	$: if (cells[0] && !width_calculated) {
+		set_cell_widths();
+		width_calculated = true;
+	}
 	let cells: HTMLTableCellElement[] = [];
 	let parent: HTMLDivElement;
 	let table: HTMLTableElement;
@@ -432,6 +479,9 @@
 
 	function set_cell_widths(): void {
 		const column_count = data[0]?.length || 0;
+		if ($df_state.filter_state.filter_columns.length > 0) {
+			return;
+		}
 		if (
 			last_width_data_length === data.length &&
 			last_width_column_count === column_count &&
@@ -492,6 +542,26 @@
 			get_current_indices
 		);
 
+		data = result.data;
+		selected = result.selected;
+	}
+
+	function filter_data(
+		_data: typeof data,
+		_display_value: string[][] | null,
+		_styling: string[][] | null
+	): void {
+		const result = filter_data_and_preserve_selection(
+			_data,
+			_display_value,
+			_styling,
+			$df_state.filter_state.filter_columns,
+			selected,
+			get_current_indices,
+			$df_state.filter_state.initial_data?.data,
+			$df_state.filter_state.initial_data?.display_value,
+			$df_state.filter_state.initial_data?.styling
+		);
 		data = result.data;
 		selected = result.selected;
 	}
@@ -649,6 +719,7 @@
 		selected_cells = [];
 		selected = false;
 		editing = false;
+		width_calculated = false;
 		set_cell_widths();
 	}
 
@@ -762,7 +833,7 @@
 		role="grid"
 		tabindex="0"
 	>
-		<table bind:this={table}>
+		<table bind:this={table} aria-hidden="true">
 			{#if label && label.length !== 0}
 				<caption class="sr-only">{label}</caption>
 			{/if}
@@ -784,10 +855,10 @@
 							{toggle_header_menu}
 							{end_header_edit}
 							sort_columns={$df_state.sort_state.sort_columns}
+							filter_columns={$df_state.filter_state.filter_columns}
 							{latex_delimiters}
 							{line_breaks}
 							{max_chars}
-							{root}
 							{editable}
 							is_static={static_columns.includes(i)}
 							{i18n}
@@ -812,7 +883,6 @@
 									datatype={Array.isArray(datatype) ? datatype[j] : datatype}
 									edit={false}
 									el={null}
-									{root}
 									{editable}
 									{i18n}
 									show_selection_buttons={selected_cells.length === 1 &&
@@ -890,10 +960,10 @@
 								{toggle_header_menu}
 								{end_header_edit}
 								sort_columns={$df_state.sort_state.sort_columns}
+								filter_columns={$df_state.filter_state.filter_columns}
 								{latex_delimiters}
 								{line_breaks}
 								{max_chars}
-								{root}
 								{editable}
 								is_static={static_columns.includes(i)}
 								{i18n}
@@ -931,7 +1001,6 @@
 								datatype={Array.isArray(datatype) ? datatype[j] : datatype}
 								{editing}
 								{max_chars}
-								{root}
 								{editable}
 								is_static={static_columns.includes(j)}
 								{i18n}
@@ -1007,6 +1076,25 @@
 			? $df_state.sort_state.sort_columns.findIndex(
 					(item) => item.col === (active_header_menu?.col ?? -1)
 				) + 1 || null
+			: null}
+		on_filter={active_header_menu
+			? (datatype, filter, value) => {
+					if (active_header_menu) {
+						handle_filter(active_header_menu.col, datatype, filter, value);
+						df_actions.set_active_header_menu(null);
+					}
+				}
+			: undefined}
+		on_clear_filter={active_header_menu
+			? () => {
+					clear_filter();
+					df_actions.set_active_header_menu(null);
+				}
+			: undefined}
+		filter_active={active_header_menu
+			? $df_state.filter_state.filter_columns.some(
+					(c) => c.col === (active_header_menu?.col ?? -1)
+				)
 			: null}
 	/>
 {/if}

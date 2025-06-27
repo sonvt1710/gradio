@@ -1,5 +1,25 @@
 # @gradio/sidebar
 
+## 0.1.16
+
+### Dependency updates
+
+- @gradio/column@0.2.1
+
+## 0.1.15
+
+### Dependency updates
+
+- @gradio/statustracker@0.10.13
+- @gradio/atoms@0.16.2
+- @gradio/column@0.2.0
+
+## 0.1.14
+
+### Dependency updates
+
+- @gradio/statustracker@0.10.12
+
 ## 0.1.14
 
 ### Dependency updates

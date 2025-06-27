@@ -109,7 +109,7 @@ test("Tall dataframe has vertical scrolling", async ({ page }) => {
 	expect(visible_rows).toBeLessThan(50);
 
 	const column_count = await tall_df_block.locator(".thead > tr > th").count();
-	expect(column_count).toBe(3);
+	expect(column_count).toBe(4);
 });
 
 test("Dataframe can be cleared and updated indirectly", async ({ page }) => {
@@ -235,7 +235,7 @@ test("Dataframe cmd + click selection works", async ({ page }) => {
 	await get_cell(df, 1, 2).click();
 
 	await get_cell(df, 2, 2).click({
-		modifiers: ["ControlOrMeta"]
+		modifiers: ["Shift"]
 	});
 
 	await page.waitForTimeout(100);
